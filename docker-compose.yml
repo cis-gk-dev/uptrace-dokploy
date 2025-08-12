@@ -94,8 +94,8 @@ services:
     volumes:
       - ./example/docker/grafana/datasource.yml:/etc/grafana/provisioning/datasources/datasource.yml
       - ./example/docker/grafana/custom.ini:/etc/grafana/grafana.ini
-    ports:
-      - '3000:3000'
+    expose:
+      - '3000'
     extra_hosts:
       - 'host.docker.internal:host-gateway'
 
