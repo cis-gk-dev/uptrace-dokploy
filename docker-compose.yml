@@ -13,9 +13,9 @@ services:
       retries: 30
     volumes:
       - ch_data:/var/lib/clickhouse
-    ports:
-      - '8123:8123'
-      - '9000:9000'
+    expose:
+      - '8123'
+      - '9000'
 
   postgres:
     image: postgres:17-alpine
@@ -32,8 +32,8 @@ services:
       retries: 30
     volumes:
       - 'pg_data3:/var/lib/postgresql/data/pgdata'
-    ports:
-      - '5432:5432'
+    expose:
+      - '5432'
 
   redis:
     image: redis:6.2.2-alpine
@@ -49,9 +49,9 @@ services:
       - ./example/docker/certs/server.key:/etc/uptrace/server.key
     #environment:
     #  - DEBUG=2
-    ports:
-      - '14317:4317'
-      - '14318:80'
+    expose:
+      - '4317'
+      - '80'
     depends_on:
       - clickhouse
       - postgres
@@ -61,9 +61,9 @@ services:
     restart: on-failure
     volumes:
       - ./example/docker/otel-collector.yaml:/etc/otelcol-contrib/config.yaml
-    ports:
-      - '4317:4317'
-      - '4318:4318'
+    expose:
+      - '4317'
+      - '4318'
     extra_hosts:
       - 'host.docker.internal:host-gateway'
     depends_on:
@@ -72,9 +72,9 @@ services:
   mailpit:
     image: axllent/mailpit
     restart: always
-    ports:
-      - 1025:1025
-      - 8025:8025
+    expose:
+      - '1025'
+      - '8025'
     environment:
       MP_MAX_MESSAGES: 5000
       MP_DATA_FILE: /data/mailpit.db
