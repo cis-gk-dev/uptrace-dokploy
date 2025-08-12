@@ -1,117 +1,73 @@
 services:
   clickhouse:
-    image: clickhouse/clickhouse-server:25.3.3
+    image: clickhouse/clickhouse-server:25.3.5
     restart: on-failure
     environment:
-      CLICKHOUSE_DB: uptrace
       CLICKHOUSE_USER: uptrace
       CLICKHOUSE_PASSWORD: uptrace
-      SHARD: shard1
-      REPLICA: replica1
-      KEEPER_ID: 1
+      CLICKHOUSE_DB: uptrace
     healthcheck:
       test: ['CMD', 'wget', '--spider', '-q', 'localhost:8123/ping']
       interval: 1s
       timeout: 1s
       retries: 30
     volumes:
-      - ch_data5:/var/lib/clickhouse
-      - ./config/clickhouse/config.xml:/etc/clickhouse-server/config.d/config.xml
-      #- ./config/clickhouse/users.xml:/etc/clickhouse-server/users.d/users.xml
+      - ch_data:/var/lib/clickhouse
     ports:
       - '8123:8123'
       - '9000:9000'
-      - '9440:9440'
-    extra_hosts:
-      - 'host.docker.internal:host-gateway'
 
   postgres:
-    image: postgres:15-alpine
+    image: postgres:17-alpine
     restart: on-failure
     environment:
       PGDATA: /var/lib/postgresql/data/pgdata
       POSTGRES_USER: uptrace
       POSTGRES_PASSWORD: uptrace
+      POSTGRES_DB: uptrace
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U uptrace -d uptrace']
+      interval: 1s
+      timeout: 1s
+      retries: 30
     volumes:
-      - 'pg_data:/var/lib/postgresql/data/pgdata'
+      - 'pg_data3:/var/lib/postgresql/data/pgdata'
     ports:
       - '5432:5432'
 
-  otelcol:
-    image: otel/opentelemetry-collector-contrib:0.88.0
+  redis:
+    image: redis:6.2.2-alpine
+    restart: on-failure
+
+  uptrace:
+    image: 'uptrace/uptrace:2.0.1'
+    #image: 'uptrace/uptrace-dev:latest'
     restart: on-failure
     volumes:
-      - ./config/otel-collector.yaml:/etc/otelcol-contrib/config.yaml
+      - ./example/docker/uptrace.yml:/etc/uptrace/config.yml
+      - ./example/docker/certs/server.crt:/etc/uptrace/server.crt
+      - ./example/docker/certs/server.key:/etc/uptrace/server.key
+    #environment:
+    #  - DEBUG=2
+    ports:
+      - '14317:4317'
+      - '14318:80'
+    depends_on:
+      - clickhouse
+      - postgres
+
+  otelcol:
+    image: otel/opentelemetry-collector-contrib:0.123.0
+    restart: on-failure
+    volumes:
+      - ./example/docker/otel-collector.yaml:/etc/otelcol-contrib/config.yaml
     ports:
       - '4317:4317'
       - '4318:4318'
     extra_hosts:
       - 'host.docker.internal:host-gateway'
-
-  alertmanager:
-    image: prom/alertmanager:v0.24.0
-    restart: on-failure
-    volumes:
-      - ./config/alertmanager.yml:/etc/alertmanager/config.yml
-      - alertmanager_data:/alertmanager
-    ports:
-      - 9093:9093
-    command:
-      - '--config.file=/etc/alertmanager/config.yml'
-      - '--storage.path=/alertmanager'
-
-  vector:
-    image: timberio/vector:0.28.X-alpine
-    volumes:
-      - ./config/vector.toml:/etc/vector/vector.toml:ro
-    extra_hosts:
-      - 'host.docker.internal:host-gateway'
-
-  keycloak:
-    image: quay.io/keycloak/keycloak:19.0.2
-    restart: on-failure
-    ports:
-      - 9090:8080
-    environment:
-      KEYCLOAK_ADMIN: admin
-      KEYCLOAK_ADMIN_PASSWORD: admin
-    command: start-dev
-
-  grafana:
-    image: grafana/grafana:10.3.1
-    restart: on-failure
-    volumes:
-      - ./config/grafana/datasource.yml:/etc/grafana/provisioning/datasources/datasource.yml
-      - ./config/grafana/custom.ini:/etc/grafana/grafana.ini
-    ports:
-      - '3000:3000'
-    extra_hosts:
-      - 'host.docker.internal:host-gateway'
-
-  prometheus:
-    image: prom/prometheus:v2.36.2
-    restart: always
-    volumes:
-      - ./config/prometheus/:/etc/prometheus/
-      - prometheus_data:/prometheus
-    command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.path=/prometheus'
-      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
-      - '--web.console.templates=/usr/share/prometheus/consoles'
-    extra_hosts:
-      - 'host.docker.internal:host-gateway'
-
-  # node_exporter:
-  #   image: quay.io/prometheus/node-exporter:latest
-  #   container_name: node_exporter
-  #   command:
-  #     - '--path.rootfs=/host'
-  #   network_mode: host
-  #   pid: host
-  #   restart: unless-stopped
-  #   volumes:
-  #     - '/:/host:ro,rslave'
+    depends_on:
+      - uptrace
 
   mailpit:
     image: axllent/mailpit
@@ -127,9 +83,49 @@ services:
     volumes:
       - mailpit_data:/data
 
+  vector:
+    image: timberio/vector:0.28.X-alpine
+    volumes:
+      - ./example/docker/vector.toml:/etc/vector/vector.toml:ro
+
+  grafana:
+    image: grafana/grafana:12.0.0
+    restart: on-failure
+    volumes:
+      - ./example/docker/grafana/datasource.yml:/etc/grafana/provisioning/datasources/datasource.yml
+      - ./example/docker/grafana/custom.ini:/etc/grafana/grafana.ini
+    ports:
+      - '3000:3000'
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+
+  prometheus:
+    image: prom/prometheus:v2.36.2
+    restart: always
+    volumes:
+      - ./example/docker/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+
+  node_exporter:
+    image: quay.io/prometheus/node-exporter:latest
+    container_name: node_exporter
+    command:
+      - '--path.rootfs=/host'
+    network_mode: host
+    pid: host
+    restart: unless-stopped
+    volumes:
+      - '/:/host:ro,rslave'
+
 volumes:
-  ch_data5:
-  pg_data:
-  alertmanager_data:
+  ch_data:
+  pg_data3:
   prometheus_data:
   mailpit_data:
